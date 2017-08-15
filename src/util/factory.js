@@ -1,5 +1,6 @@
 const d3 = require('d3');
 const Tabletop = require('tabletop');
+const XLSX = require('xlsx');
 const _ = {
     map: require('lodash/map'),
     uniqBy: require('lodash/uniqBy'),
@@ -20,22 +21,12 @@ const Sheet = require('./sheet');
 const ExceptionMessages = require('./exceptionMessages');
 
 
-const GoogleSheet = function (sheetReference, sheetName) {
+const LocalSheet = function (filename, workbook) {
     var self = {};
 
     self.build = function () {
-        var sheet = new Sheet(sheetReference);
-        sheet.exists(function(notFound) {
-            if (notFound) {
-                displayErrorMessage(notFound);
-                return;
-            }
 
-            Tabletop.init({
-                key: sheet.id,
-                callback: createRadar
-            });
-        });
+        createRadar();
 
         function displayErrorMessage(exception) {
             d3.selectAll(".loading").remove();
@@ -60,25 +51,32 @@ const GoogleSheet = function (sheetReference, sheetName) {
                 .html(message);
         }
 
-        function createRadar(__, tabletop) {
+        function createRadar(__) {
 
             try {
+                var sheetName = workbook.SheetNames[0];
+                var sheet = workbook.Sheets[sheetName];
+                var headers = [];
+                var range = XLSX.utils.decode_range(sheet['!ref']);
+                var C, R = range.s.r; /* start in the first row */
+                /* walk every column in the range */
+                for(C = range.s.c; C <= range.e.c; ++C) {
+                    var cell = sheet[XLSX.utils.encode_cell({c:C, r:R})] /* find the cell in the first row */
 
-                if (!sheetName) {
-                    sheetName = tabletop.foundSheetNames[0];
+                    var hdr = "UNKNOWN " + C; // <-- replace with your desired default 
+                    if(cell && cell.t) hdr = XLSX.utils.format_cell(cell);
+
+                    headers.push(hdr);
                 }
-                var columnNames = tabletop.sheets(sheetName).columnNames;
-
-                var contentValidator = new ContentValidator(columnNames);
+                var contentValidator = new ContentValidator(headers);
                 contentValidator.verifyContent();
                 contentValidator.verifyHeaders();
 
-                var all = tabletop.sheets(sheetName).all();
+                var all = XLSX.utils.sheet_to_json(sheet);
                 var blips = _.map(all, new InputSanitizer().sanitize);
 
-                document.title = tabletop.googleSheetName;
+                document.title = filename;
                 d3.selectAll(".loading").remove();
-
                 var rings = _.map(_.uniqBy(blips, 'ring'), 'ring');
                 var ringMap = {};
                 var maxRings = 4;
@@ -89,7 +87,6 @@ const GoogleSheet = function (sheetReference, sheetName) {
                     }
                     ringMap[ringName] = new Ring(ringName, i);
                 });
-
                 var quadrants = {};
                 _.each(blips, function (blip) {
                     if (!quadrants[blip.quadrant]) {
@@ -97,7 +94,6 @@ const GoogleSheet = function (sheetReference, sheetName) {
                     }
                     quadrants[blip.quadrant].add(new Blip(blip.name, ringMap[blip.ring], blip.isNew.toLowerCase() === 'true', blip.topic, blip.description))
                 });
-
                 var radar = new Radar();
                 _.each(quadrants, function (quadrant) {
                     radar.addQuadrant(quadrant)
@@ -114,6 +110,9 @@ const GoogleSheet = function (sheetReference, sheetName) {
     };
 
     self.init = function () {
+
+        d3.select('body div.input-sheet').remove();
+
         var content = d3.select('body')
             .append('div')
             .attr('class', 'loading')
@@ -135,50 +134,27 @@ const GoogleSheet = function (sheetReference, sheetName) {
     return self;
 };
 
-var QueryParams = function (queryString) {
-    var decode = function (s) {
-        return decodeURIComponent(s.replace(/\+/g, " "));
-    };
-
-    var search = /([^&=]+)=?([^&]*)/g;
-
-    var queryParams = {};
-    var match;
-    while (match = search.exec(queryString))
-        queryParams[decode(match[1])] = decode(match[2]);
-
-    return queryParams
-};
-
-
-const GoogleSheetInput = function () {
+const LocalSheetInput = function () {
     var self = {};
 
     self.build = function () {
-        var queryParams = QueryParams(window.location.search.substring(1));
+        
+        var content = d3.select('body')
+        .append('div')
+        .attr('class', 'input-sheet');
 
-        if (queryParams.sheetId) {
-            var sheet = GoogleSheet(queryParams.sheetId, queryParams.sheetName);
-            sheet.init().build();
-        } else {
-            var content = d3.select('body')
-                .append('div')
-                .attr('class', 'input-sheet');
+        set_document_title();
 
-            set_document_title();
+        plotLogo(content);
 
-            plotLogo(content);
+        var bannerText = '<h1>Build your own radar</h1><p>Once you\'ve <a href ="https://info.thoughtworks.com/visualize-your-tech-strategy.html">created your Radar</a>, you can use this service' +
+            ' to generate an <br />interactive version of your Technology Radar. Not sure how? <a href ="https://info.thoughtworks.com/visualize-your-tech-strategy-guide.html">Read this first.</a></p>';
 
-            var bannerText = '<h1>Build your own radar</h1><p>Once you\'ve <a href ="https://info.thoughtworks.com/visualize-your-tech-strategy.html">created your Radar</a>, you can use this service' +
-                ' to generate an <br />interactive version of your Technology Radar. Not sure how? <a href ="https://info.thoughtworks.com/visualize-your-tech-strategy-guide.html">Read this first.</a></p>';
+        plotBanner(content, bannerText);
 
-            plotBanner(content, bannerText);
+        plotForm(content);
 
-            plotForm(content);
-
-            plotFooter(content);
-
-        }
+        plotFooter(content);
     };
 
     return self;
@@ -217,27 +193,90 @@ function plotBanner(content, text) {
 
 }
 
-function plotForm(content) {
-    content.append('div')
-        .attr('class', 'input-sheet__form')
-        .append('p')
-        .html('<strong>Enter the URL of your <a href="https://info.thoughtworks.com/visualize-your-tech-strategy-guide.html#publish-byor-sheet" target="_blank">published</a> Google Sheet below…</strong>');
+function fixdata(data) {
+  var o = "", l = 0, w = 10240;
+  for(; l<data.byteLength/w; ++l) o+=String.fromCharCode.apply(null,new Uint8Array(data.slice(l*w,l*w+w)));
+  o+=String.fromCharCode.apply(null, new Uint8Array(data.slice(l*w)));
+  return o;
+}
+function handleDragover() {
+    d3.event.stopPropagation();
+    d3.event.preventDefault();
+    d3.event.dataTransfer.dropEffect = 'copy';
+}
+function handleDrop() {
+  console.log('heelo');
+  d3.event.stopPropagation();
+  d3.event.preventDefault();
+  var files = d3.event.dataTransfer.files;
+  var i,f;
+  for (i = 0; i != files.length; ++i) {
+    f = files[i];
+    var reader = new FileReader();
+    var name = f.name;
+    reader.onload = function(e) {
+      var data = e.target.result;
 
-    var form = content.select('.input-sheet__form').append('form')
-        .attr('method', 'get');
+      var workbook;
+      var arr = fixdata(data);
+      workbook = XLSX.read(btoa(arr), {type: 'base64'});
 
-    form.append('input')
-        .attr('type', 'text')
-        .attr('name', 'sheetId')
-        .attr('placeholder', 'e.g. https://docs.google.com/spreadsheets/d/1waDG0_W3-yNiAaUfxcZhTKvl7AUCgXwQw8mdPjCz86U/');
+      /* DO SOMETHING WITH workbook HERE */
+      console.log('success1');
+      var sheet = LocalSheet(name, workbook);
+      sheet.init().build();
+    };
+    reader.readAsArrayBuffer(f);
+  }
+  return false;
+}
+function handleFile() {
+  d3.event.stopPropagation();
+  d3.event.preventDefault();
+  var files = d3.event.target.files;
+  var i,f;
+  for (i = 0; i != files.length; ++i) {
+    f = files[i];
+    var reader = new FileReader();
+    var name = f.name;
+    reader.onload = function(e) {
+      var data = e.target.result;
 
-    form.append('button')
-        .attr('type', 'submit')
-        .append('a')
-        .attr('class', 'button')
-        .text('Build my radar');
+      var workbook;
+      var arr = fixdata(data);
+      workbook = XLSX.read(btoa(arr), {type: 'base64'});
 
-    form.append('p').html("<a href='https://info.thoughtworks.com/visualize-your-tech-strategy-guide.html#faq'>Need help?</a>");
+      var sheet = LocalSheet(name, workbook);
+      sheet.init().build();
+    };
+    reader.readAsArrayBuffer(f);
+  }
+  return false;
 }
 
-module.exports = GoogleSheetInput;
+function plotForm(content) {
+    content.append('div')
+        .attr('class', 'input-sheet__form');
+
+    var localForm = content.select('.input-sheet__form').append('form')
+        .attr('method', 'get');
+
+    localForm.append('div')
+             .attr('id', 'drop-area')
+             .on('dragenter', handleDragover)
+             .on('dragover', handleDragover)
+             .on('drop', handleDrop)
+             .append('p')
+             .text('Drag & Drop file here');
+
+    localForm.append('input')
+             .attr('type', 'file')
+             .attr('name', 'localSheet')
+             .attr('id', 'xlsxfile')
+             .on('change', handleFile);
+
+    localForm.append('p')
+             .html("You can download an input sample <a href='https://docs.google.com/spreadsheets/d/1YXkrgV7Y6zShiPeyw4Y5_19QOfu5I6CyH5sGnbkEyiI/export?format=xlsx&id=1YXkrgV7Y6zShiPeyw4Y5_19QOfu5I6CyH5sGnbkEyiI' target=_blank>here</a>.");
+}
+
+module.exports = LocalSheetInput;
