@@ -8,3 +8,6 @@
 ## How to deploy
 1. Download the source code, you'll find a Dockerfile in the folder. Run _"docker build -t radarapp:demo ."_ to build the image.
 2. Once you build the image successfully, you can run _"docker run -p 8080:8080 radarapp:demo"_ to start the container and the app server will be started automatically.
+
+## Verification Video
+[https://youtu.be/hEqDRKQjsb4](https://youtu.be/hEqDRKQjsb4)
