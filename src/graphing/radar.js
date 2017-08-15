@@ -549,6 +549,15 @@ const Radar = function (size, radar) {
       plotBlips(quadrantGroup, rings, quadrant);
     });
 
+    /* insert a button to allow users go back */
+    d3.select('body')
+      .append('div')
+      .attr('id', 'home-btn').style('text-align', 'center')
+      .append('a')
+      .attr('class', 'button')
+      .attr('href', '/')
+      .text('Rebuild my radar');
+
     plotRadarFooter();
   };
 

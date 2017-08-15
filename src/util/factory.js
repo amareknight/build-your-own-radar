@@ -127,7 +127,6 @@ const LocalSheet = function (filename, workbook) {
         plotBanner(content, bannerText);
         plotFooter(content);
 
-
         return self;
     };
 
@@ -182,8 +181,6 @@ function plotFooter(content) {
         + 'You also agree to our <a href="https://www.thoughtworks.com/privacy-policy">privacy policy</a>, which describes how we will gather, use and protect any personal data contained in your public Google Sheet. '
         + 'This software is <a href="https://github.com/thoughtworks/build-your-own-radar">open source</a> and available for download and self-hosting.');
 
-
-
 }
 
 function plotBanner(content, text) {
@@ -193,6 +190,7 @@ function plotBanner(content, text) {
 
 }
 
+/* for handleDrop and handleFile */
 function fixdata(data) {
   var o = "", l = 0, w = 10240;
   for(; l<data.byteLength/w; ++l) o+=String.fromCharCode.apply(null,new Uint8Array(data.slice(l*w,l*w+w)));
@@ -205,7 +203,6 @@ function handleDragover() {
     d3.event.dataTransfer.dropEffect = 'copy';
 }
 function handleDrop() {
-  console.log('heelo');
   d3.event.stopPropagation();
   d3.event.preventDefault();
   var files = d3.event.dataTransfer.files;
@@ -221,8 +218,6 @@ function handleDrop() {
       var arr = fixdata(data);
       workbook = XLSX.read(btoa(arr), {type: 'base64'});
 
-      /* DO SOMETHING WITH workbook HERE */
-      console.log('success1');
       var sheet = LocalSheet(name, workbook);
       sheet.init().build();
     };
@@ -267,9 +262,10 @@ function plotForm(content) {
              .on('dragover', handleDragover)
              .on('drop', handleDrop)
              .append('p')
-             .text('Drag & Drop file here');
+             .text('Click to choose or Drag & Drop Excel file here');
 
-    localForm.append('input')
+    localForm.select('#drop-area')
+             .append('input')
              .attr('type', 'file')
              .attr('name', 'localSheet')
              .attr('id', 'xlsxfile')
