@@ -202,6 +202,11 @@ function handleDragover() {
     d3.event.preventDefault();
     d3.event.dataTransfer.dropEffect = 'copy';
 }
+/* 
+Both handleDrop and handleFile use FileReader and 
+readAsArrayBuffer to read local Excel file.
+Ref: https://github.com/SheetJS/js-xlsx
+*/
 function handleDrop() {
   d3.event.stopPropagation();
   d3.event.preventDefault();
@@ -255,7 +260,7 @@ function plotForm(content) {
 
     var localForm = content.select('.input-sheet__form').append('form')
         .attr('method', 'get');
-
+    /* drag & drop area */
     localForm.append('div')
              .attr('id', 'drop-area')
              .on('dragenter', handleDragover)
@@ -263,7 +268,7 @@ function plotForm(content) {
              .on('drop', handleDrop)
              .append('p')
              .text('Click to choose or Drag & Drop Excel file here');
-
+    /* file picker */
     localForm.select('#drop-area')
              .append('input')
              .attr('type', 'file')
